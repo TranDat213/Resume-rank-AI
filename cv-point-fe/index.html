@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CV Ranker — AI-Powered Recruitment</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --surface2: #1a1a25;
+    --border: #2a2a3a;
+    --accent: #7c6aff;
+    --accent2: #ff6a9b;
+    --accent3: #6affcb;
+    --text: #e8e8f0;
+    --muted: #6b6b85;
+    --danger: #ff4d6d;
+    --warn: #ffb347;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Mono', monospace;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Animated background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 60% 40% at 20% 10%, rgba(124,106,255,0.08) 0%, transparent 60%),
+      radial-gradient(ellipse 50% 50% at 80% 80%, rgba(106,255,203,0.05) 0%, transparent 60%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Grid lines */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(124,106,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(124,106,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .wrap {
+    position: relative;
+    z-index: 1;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0 24px 60px;
+  }
+
+  /* Header */
+  header {
+    padding: 48px 0 40px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 48px;
+  }
+
+  .logo {
+    font-family: 'Syne', sans-serif;
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+  }
+  .logo span { color: var(--accent); }
+  .logo sub {
+    font-size: 11px;
+    font-family: 'DM Mono', monospace;
+    font-weight: 400;
+    color: var(--muted);
+    display: block;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+
+  .status-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(106,255,203,0.06);
+    border: 1px solid rgba(106,255,203,0.2);
+    border-radius: 20px;
+    padding: 6px 14px;
+    font-size: 11px;
+    color: var(--accent3);
+    letter-spacing: 1px;
+  }
+  .status-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent3);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.8); }
+  }
+
+  /* Main layout */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    transition: border-color 0.2s;
+  }
+  .card:hover { border-color: rgba(124,106,255,0.3); }
+
+  .card-label {
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card-label::before {
+    content: '';
+    display: block;
+    width: 16px; height: 1px;
+    background: var(--accent);
+  }
+
+  textarea {
+    width: 100%;
+    height: 200px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 12.5px;
+    line-height: 1.7;
+    padding: 14px 16px;
+    resize: none;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  textarea:focus { border-color: var(--accent); }
+  textarea::placeholder { color: var(--muted); }
+
+  /* Drop zone */
+  .drop-zone {
+    width: 100%;
+    height: 200px;
+    background: var(--surface2);
+    border: 1.5px dashed var(--border);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(124,106,255,0.04);
+  }
+  .drop-zone input[type="file"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+  .drop-icon {
+    font-size: 28px;
+    opacity: 0.4;
+  }
+  .drop-text {
+    font-size: 12px;
+    color: var(--muted);
+    text-align: center;
+  }
+  .drop-text strong {
+    color: var(--accent);
+    font-weight: 500;
+  }
+
+  /* File list */
+  .file-list {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .file-chip {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 11.5px;
+    animation: slideIn 0.2s ease;
+  }
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .file-chip-name { color: var(--text); }
+  .file-chip-size { color: var(--muted); font-size: 10px; }
+  .file-chip-remove {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0 2px;
+    transition: color 0.15s;
+  }
+  .file-chip-remove:hover { color: var(--danger); }
+
+  /* Submit */
+  .submit-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 40px;
+  }
+
+  .btn-rank {
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 14px 36px;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+  .btn-rank::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.1), transparent);
+  }
+  .btn-rank:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(124,106,255,0.35); }
+  .btn-rank:active { transform: translateY(0); }
+  .btn-rank:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+  .btn-clear {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-clear:hover { color: var(--text); border-color: var(--muted); }
+
+  .hint-text {
+    font-size: 11px;
+    color: var(--muted);
+    flex: 1;
+    text-align: right;
+  }
+
+  /* Loading */
+  .loading-bar {
+    display: none;
+    height: 2px;
+    background: var(--border);
+    border-radius: 2px;
+    margin-bottom: 40px;
+    overflow: hidden;
+  }
+  .loading-bar.active { display: block; }
+  .loading-bar::after {
+    content: '';
+    display: block;
+    height: 100%;
+    width: 40%;
+    background: linear-gradient(90deg, var(--accent), var(--accent3));
+    border-radius: 2px;
+    animation: loadSlide 1.2s ease-in-out infinite;
+  }
+  @keyframes loadSlide {
+    0% { transform: translateX(-200%); }
+    100% { transform: translateX(350%); }
+  }
+
+  /* Results */
+  .results-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+  .results-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+  }
+  .results-count {
+    font-size: 11px;
+    color: var(--muted);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 4px 12px;
+  }
+
+  .result-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .result-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    animation: fadeUp 0.3s ease both;
+  }
+  .result-card:nth-child(1) { animation-delay: 0.05s; }
+  .result-card:nth-child(2) { animation-delay: 0.1s; }
+  .result-card:nth-child(3) { animation-delay: 0.15s; }
+  .result-card:nth-child(4) { animation-delay: 0.2s; }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .result-card.rank-1 { border-color: rgba(106,255,203,0.35); }
+  .result-card.rank-2 { border-color: rgba(124,106,255,0.25); }
+  .result-card.rank-3 { border-color: rgba(255,106,155,0.15); }
+
+  .result-top {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 18px 20px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .result-top:hover { background: rgba(255,255,255,0.02); }
+
+  .rank-badge {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 13px;
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .rank-1 .rank-badge { background: rgba(106,255,203,0.12); color: var(--accent3); border: 1px solid rgba(106,255,203,0.3); }
+  .rank-2 .rank-badge { background: rgba(124,106,255,0.12); color: var(--accent); border: 1px solid rgba(124,106,255,0.3); }
+  .rank-3 .rank-badge { background: rgba(255,106,155,0.1); color: var(--accent2); border: 1px solid rgba(255,106,155,0.25); }
+  .rank-other .rank-badge { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
+
+  .result-meta {
+    flex: 1;
+    min-width: 0;
+  }
+  .result-filename {
+    font-size: 13.5px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+  .result-skills-preview {
+    font-size: 11px;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .score-block {
+    text-align: right;
+    flex-shrink: 0;
+  }
+  .score-num {
+    font-family: 'Syne', sans-serif;
+    font-size: 22px;
+    font-weight: 800;
+    line-height: 1;
+  }
+  .score-label { font-size: 10px; color: var(--muted); letter-spacing: 1px; margin-top: 2px; }
+
+  .score-high { color: var(--accent3); }
+  .score-mid { color: var(--accent); }
+  .score-low { color: var(--accent2); }
+
+  /* Score bar */
+  .score-bar-wrap {
+    height: 3px;
+    background: var(--border);
+    margin: 0 20px;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .score-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .fill-high { background: linear-gradient(90deg, var(--accent3), rgba(106,255,203,0.4)); }
+  .fill-mid { background: linear-gradient(90deg, var(--accent), rgba(124,106,255,0.4)); }
+  .fill-low { background: linear-gradient(90deg, var(--accent2), rgba(255,106,155,0.4)); }
+
+  /* Expandable detail */
+  .result-detail {
+    display: none;
+    border-top: 1px solid var(--border);
+    padding: 20px;
+    background: rgba(0,0,0,0.15);
+  }
+  .result-detail.open { display: block; }
+
+  .detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  .detail-section {}
+  .detail-section-title {
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  .skill-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .skill-tag {
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 4px;
+    border: 1px solid;
+  }
+  .tag-match {
+    background: rgba(106,255,203,0.06);
+    border-color: rgba(106,255,203,0.25);
+    color: var(--accent3);
+  }
+  .tag-miss {
+    background: rgba(255,77,109,0.06);
+    border-color: rgba(255,77,109,0.25);
+    color: var(--danger);
+  }
+
+  .feedback-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .feedback-item {
+    font-size: 11.5px;
+    line-height: 1.6;
+    color: var(--warn);
+    background: rgba(255,179,71,0.05);
+    border: 1px solid rgba(255,179,71,0.15);
+    border-radius: 6px;
+    padding: 8px 12px;
+    display: flex;
+    gap: 8px;
+  }
+  .feedback-item::before { content: '⚠'; flex-shrink: 0; }
+
+  .info-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .info-pill {
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--muted);
+  }
+  .info-pill strong { color: var(--text); font-weight: 500; }
+
+  .chevron {
+    color: var(--muted);
+    font-size: 12px;
+    transition: transform 0.2s;
+    flex-shrink: 0;
+  }
+  .result-top.expanded .chevron { transform: rotate(180deg); }
+
+  /* Empty / error states */
+  .empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 2;
+  }
+  .empty-state-icon { font-size: 40px; opacity: 0.2; margin-bottom: 12px; }
+
+  .error-box {
+    background: rgba(255,77,109,0.06);
+    border: 1px solid rgba(255,77,109,0.25);
+    border-radius: 8px;
+    padding: 14px 18px;
+    font-size: 12.5px;
+    color: var(--danger);
+    margin-bottom: 20px;
+  }
+
+  /* Responsive */
+  @media (max-width: 640px) {
+    .main-grid { grid-template-columns: 1fr; }
+    .detail-grid { grid-template-columns: 1fr; }
+    header { flex-direction: column; align-items: flex-start; gap: 16px; }
+    .submit-row { flex-wrap: wrap; }
+    .hint-text { text-align: left; width: 100%; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">
+      CV<span>Rank</span>
+      <sub>AI-powered · cv_AI_project</sub>
+    </div>
+    <div class="status-pill">
+      <span class="status-dot"></span>
+      <span>BACKEND READY</span>
+    </div>
+  </header>
+
+  <div class="main-grid">
+    <div class="card">
+      <div class="card-label">Job Description</div>
+      <textarea id="jd" placeholder="Paste the job description here...&#10;&#10;Example:&#10;We are looking for a Python developer with experience in Flask, Docker, and machine learning..."></textarea>
+    </div>
+    <div class="card">
+      <div class="card-label">Upload CVs</div>
+      <div class="drop-zone" id="dropZone">
+        <input type="file" id="cvInput" accept=".pdf,.txt,.png,.jpg,.jpeg" multiple />
+        <div class="drop-icon">📄</div>
+        <div class="drop-text">
+          <strong>Click to browse</strong> or drag & drop<br/>
+          PDF, TXT, PNG, JPG supported
+        </div>
+      </div>
+      <div class="file-list" id="fileList"></div>
+    </div>
+  </div>
+
+  <div class="submit-row">
+    <button class="btn-rank" id="rankBtn" onclick="rankCVs()">⚡ Rank CVs</button>
+    <button class="btn-clear" onclick="clearAll()">Clear</button>
+    <span class="hint-text" id="hintText">Add a JD and at least one CV to start</span>
+  </div>
+
+  <div class="loading-bar" id="loadingBar"></div>
+  <div id="errorBox"></div>
+  <div id="results"></div>
+</div>
+
+<script>
+  let selectedFiles = [];
+
+  const cvInput = document.getElementById('cvInput');
+  const dropZone = document.getElementById('dropZone');
+  const fileList = document.getElementById('fileList');
+  const rankBtn = document.getElementById('rankBtn');
+  const hintText = document.getElementById('hintText');
+  const loadingBar = document.getElementById('loadingBar');
+
+  cvInput.addEventListener('change', () => {
+    addFiles(Array.from(cvInput.files));
+    cvInput.value = '';
+  });
+
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    addFiles(Array.from(e.dataTransfer.files));
+  });
+
+  function addFiles(newFiles) {
+    newFiles.forEach(f => {
+      if (!selectedFiles.find(x => x.name === f.name && x.size === f.size)) {
+        selectedFiles.push(f);
+      }
+    });
+    renderFileList();
+    updateHint();
+  }
+
+  function removeFile(idx) {
+    selectedFiles.splice(idx, 1);
+    renderFileList();
+    updateHint();
+  }
+
+  function renderFileList() {
+    fileList.innerHTML = selectedFiles.map((f, i) => `
+      <div class="file-chip">
+        <span class="file-chip-name">${escHtml(f.name)}</span>
+        <span class="file-chip-size">${formatSize(f.size)}</span>
+        <button class="file-chip-remove" onclick="removeFile(${i})" title="Remove">×</button>
+      </div>
+    `).join('');
+  }
+
+  function updateHint() {
+    const jd = document.getElementById('jd').value.trim();
+    if (!jd && selectedFiles.length === 0) hintText.textContent = 'Add a JD and at least one CV to start';
+    else if (!jd) hintText.textContent = 'Paste a job description to continue';
+    else if (selectedFiles.length === 0) hintText.textContent = 'Upload at least one CV';
+    else hintText.textContent = `Ready — ${selectedFiles.length} CV${selectedFiles.length > 1 ? 's' : ''} queued`;
+  }
+
+  document.getElementById('jd').addEventListener('input', updateHint);
+
+  function formatSize(bytes) {
+    if (bytes < 1024) return bytes + 'B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + 'KB';
+    return (bytes / 1024 / 1024).toFixed(1) + 'MB';
+  }
+
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  async function rankCVs() {
+    const jd = document.getElementById('jd').value.trim();
+    if (!jd) { showError('Please enter a job description.'); return; }
+    if (selectedFiles.length === 0) { showError('Please upload at least one CV.'); return; }
+
+    rankBtn.disabled = true;
+    loadingBar.classList.add('active');
+    document.getElementById('errorBox').innerHTML = '';
+    document.getElementById('results').innerHTML = '';
+
+    const formData = new FormData();
+    formData.append('jd', jd);
+    selectedFiles.forEach(f => formData.append('cvs', f, f.name));
+
+    try {
+      const res = await fetch('http://localhost:3000/ranking/upload', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!res.ok) throw new Error(`Server responded ${res.status}: ${res.statusText}`);
+      const data = await res.json();
+      renderResults(data);
+    } catch (err) {
+      showError(`Failed to connect to backend: ${err.message}<br/><small style="opacity:0.6">Make sure NestJS is running on port 3000 and Flask is on port 5000.</small>`);
+    } finally {
+      rankBtn.disabled = false;
+      loadingBar.classList.remove('active');
+    }
+  }
+
+  function showError(msg) {
+    document.getElementById('errorBox').innerHTML = `<div class="error-box">${msg}</div>`;
+  }
+
+  function renderResults(data) {
+    if (!data || data.length === 0) {
+      document.getElementById('results').innerHTML = `<div class="empty-state"><div class="empty-state-icon">🔍</div>No results returned from the server.</div>`;
+      return;
+    }
+
+    const rankClass = i => i === 0 ? 'rank-1' : i === 1 ? 'rank-2' : i === 2 ? 'rank-3' : 'rank-other';
+    const scoreClass = s => s >= 0.7 ? 'score-high' : s >= 0.4 ? 'score-mid' : 'score-low';
+    const fillClass = s => s >= 0.7 ? 'fill-high' : s >= 0.4 ? 'fill-mid' : 'fill-low';
+
+    const html = `
+      <div class="results-header">
+        <div class="results-title">Rankings</div>
+        <div class="results-count">${data.length} candidate${data.length > 1 ? 's' : ''} ranked</div>
+      </div>
+      <div class="result-cards">
+        ${data.map((r, i) => {
+          const pct = Math.round(r.score * 100);
+          const info = r.extracted_info || {};
+          const skillsPreview = (r.matched_skills || []).slice(0, 4).join(', ') || 'No matching skills';
+
+          return `
+          <div class="result-card ${rankClass(i)}">
+            <div class="result-top" onclick="toggleDetail(this)">
+              <div class="rank-badge">#${i + 1}</div>
+              <div class="result-meta">
+                <div class="result-filename">${escHtml(r.filename)}</div>
+                <div class="result-skills-preview">✓ ${escHtml(skillsPreview)}</div>
+              </div>
+              <div class="score-block">
+                <div class="score-num ${scoreClass(r.score)}">${pct}%</div>
+                <div class="score-label">MATCH</div>
+              </div>
+              <div class="chevron">▾</div>
+            </div>
+            <div class="score-bar-wrap">
+              <div class="score-bar-fill ${fillClass(r.score)}" style="width:${pct}%"></div>
+            </div>
+            <div class="result-detail">
+              <div class="detail-grid">
+                <div class="detail-section">
+                  <div class="detail-section-title">Matched Skills (${(r.matched_skills||[]).length})</div>
+                  <div class="skill-tags">
+                    ${(r.matched_skills||[]).length > 0
+                      ? r.matched_skills.map(s => `<span class="skill-tag tag-match">${escHtml(s)}</span>`).join('')
+                      : '<span style="color:var(--muted);font-size:11px">None matched</span>'}
+                  </div>
+                </div>
+                <div class="detail-section">
+                  <div class="detail-section-title">Missing Skills (${(r.missing_skills||[]).length})</div>
+                  <div class="skill-tags">
+                    ${(r.missing_skills||[]).length > 0
+                      ? r.missing_skills.map(s => `<span class="skill-tag tag-miss">${escHtml(s)}</span>`).join('')
+                      : '<span style="color:var(--accent3);font-size:11px">All skills matched ✓</span>'}
+                  </div>
+                </div>
+              </div>
+              ${info.companies && info.companies.length > 0 ? `
+              <div class="detail-section" style="margin-bottom:16px">
+                <div class="detail-section-title">Detected Companies</div>
+                <div class="info-pills">
+                  ${info.companies.slice(0,8).map(c => `<div class="info-pill">${escHtml(c)}</div>`).join('')}
+                  ${info.years_experience > 0 ? `<div class="info-pill"><strong>${info.years_experience}</strong> yrs exp</div>` : ''}
+                </div>
+              </div>` : ''}
+              ${(r.feedback||[]).length > 0 ? `
+              <div class="detail-section">
+                <div class="detail-section-title">AI Feedback</div>
+                <div class="feedback-list">
+                  ${r.feedback.map(f => `<div class="feedback-item">${escHtml(f)}</div>`).join('')}
+                </div>
+              </div>` : `
+              <div class="detail-section">
+                <div class="detail-section-title">AI Feedback</div>
+                <div style="font-size:12px;color:var(--accent3)">✓ Strong candidate — no major gaps detected.</div>
+              </div>`}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>`;
+
+    document.getElementById('results').innerHTML = html;
+
+    requestAnimationFrame(() => {
+      document.querySelectorAll('.score-bar-fill').forEach(el => {
+        const w = el.style.width;
+        el.style.width = '0%';
+        requestAnimationFrame(() => { el.style.width = w; });
+      });
+    });
+  }
+
+  function toggleDetail(el) {
+    el.classList.toggle('expanded');
+    const detail = el.parentElement.querySelector('.result-detail');
+    detail.classList.toggle('open');
+  }
+
+  function clearAll() {
+    selectedFiles = [];
+    renderFileList();
+    document.getElementById('jd').value = '';
+    document.getElementById('results').innerHTML = '';
+    document.getElementById('errorBox').innerHTML = '';
+    updateHint();
+  }
+
+  updateHint();
+</script>
+</body>
+</html>

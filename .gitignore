@@ -1,0 +1,16 @@
+# Node (NestJS)
+cv-point-be/node_modules/
+cv-point-be/dist/
+
+# Python AI
+ai-service/__pycache__/
+ai-service/*.pkl
+ai-service/*.joblib
+ai-service/venv/
+
+# Env
+.env
+*/.env
+
+# OS
+.DS_Store
