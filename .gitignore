@@ -7,7 +7,7 @@ ai-service/__pycache__/
 ai-service/*.pkl
 ai-service/*.joblib
 ai-service/venv/
-
+ai-service/sample_dataset.csv
 # Env
 .env
 */.env

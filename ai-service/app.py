@@ -26,48 +26,61 @@ print("Loading NLP models (this may take a moment)...")
 try:
     nlp = spacy.load("en_core_web_sm")
 except OSError:
-    print("WARNING: Spacy model not found. Run 'python -m spacy download en_core_web_sm'")
+    print("WARNING: Spacy model not found. Run: python -m spacy download en_core_web_sm")
     nlp = None
 
 # ── Sentence Embedder ──────────────────────────────────────────────────────────
 if SentenceTransformer is not None:
     try:
         embedder = SentenceTransformer('all-MiniLM-L6-v2')
+        print("✅ Loaded sentence-transformer: all-MiniLM-L6-v2")
     except Exception as e:
         print(f"WARNING: Failed to load sentence-transformers: {e}")
         embedder = None
 else:
     embedder = None
 
-# ── Load trained RandomForest model (.pkl) ─────────────────────────────────────
+# ── Load Gradient Boosting model (.pkl) ────────────────────────────────────────
+# Model được train bởi train_scoring_model.py, predict score trên thang 0–100
 MODEL_PATH = os.path.join(os.path.dirname(__file__), 'cv_scoring_model.pkl')
 scoring_model = None
 if os.path.exists(MODEL_PATH):
     try:
         scoring_model = joblib.load(MODEL_PATH)
-        print(f"✅ Loaded AI scoring model from {MODEL_PATH}")
+        print(f"✅ Loaded scoring model from {MODEL_PATH}")
     except Exception as e:
         print(f"WARNING: Could not load scoring model: {e}")
 else:
-    print(f"WARNING: Model file not found at {MODEL_PATH}. Falling back to ratio scoring.")
+    print(f"WARNING: {MODEL_PATH} not found.")
+    print("         Run: python generate_dataset.py && python train_scoring_model.py")
 
-# ── Skill dictionary ───────────────────────────────────────────────────────────
+# ── Constants ──────────────────────────────────────────────────────────────────
+# Phải giống hệt thứ tự FEATURES trong train_scoring_model.py
+FEATURE_ORDER = ["skill_match_ratio", "experience_diff", "cosine_similarity", "education_match"]
+
 COMMON_TECH_SKILLS = [
+    # Languages
     "python", "java", "c++", "c#", "c", "javascript", "typescript", "ruby",
     "php", "go", "rust", "swift", "kotlin", "dart", "scala", "r", "matlab",
     "perl", "haskell",
+    # Frameworks
     "react", "angular", "vue", "node.js", "django", "flask", "spring",
     "express", "next.js", "nestjs", "laravel", "ruby on rails", "asp.net", "fastapi",
+    # Databases
     "sql", "nosql", "mongodb", "postgresql", "mysql", "sqlite", "redis",
     "elasticsearch", "cassandra", "oracle", "mariadb",
+    # Infrastructure & DevOps
     "docker", "kubernetes", "aws", "azure", "gcp", "git", "linux", "jenkins",
     "gitlab ci", "github actions", "terraform", "ansible", "nginx", "apache",
+    # AI & ML
     "machine learning", "deep learning", "ai", "artificial intelligence",
     "tensorflow", "pytorch", "scikit-learn", "pandas", "numpy", "keras",
     "opencv", "nlp", "computer vision", "data science",
+    # General
     "html", "css", "rest", "graphql", "ci/cd", "agile", "scrum", "jira", "figma",
 ]
 
+# Phải nhất quán với compute_target_score() trong generate_dataset.py
 EDUCATION_KEYWORDS = {
     "phd": 4, "doctorate": 4,
     "master": 3, "msc": 3, "m.s": 3, "mba": 3,
@@ -75,8 +88,24 @@ EDUCATION_KEYWORDS = {
     "associate": 1, "diploma": 1, "certificate": 1,
 }
 
+# Skills liên quan AI/ML — dùng trong build_feedback
+AI_SKILLS = {
+    "machine learning", "ai", "deep learning", "tensorflow", "pytorch",
+    "scikit-learn", "keras", "computer vision", "nlp", "data science",
+}
 
-# ── Helpers ────────────────────────────────────────────────────────────────────
+# Từ hay bị Spacy nhận nhầm là ORG
+INVALID_ORG_KEYWORDS = {
+    "frontend", "backend", "skills", "education", "experience", "role",
+    "responsibilities", "certificates", "projects", "summary", "profile",
+    "database", "framework", "library", "vscode", "visual studio", "postman",
+    "wamp", "crud", "rest api", "uml", "club", "git", "docker", "prisma",
+    "bootstrap", "visual", "sql server", "objective", "tools", "languages",
+    "technologies", "frameworks", "libraries", "mysql", "api",
+}
+
+
+# ── Text extraction ────────────────────────────────────────────────────────────
 
 def extract_text(file) -> str:
     filename = file.filename.lower()
@@ -113,11 +142,13 @@ def extract_text(file) -> str:
     return text
 
 
+# ── Feature extractors ─────────────────────────────────────────────────────────
+
 def extract_skills(text: str) -> list[str]:
     text_lower = text.lower()
     found = set()
     for skill in COMMON_TECH_SKILLS:
-        if skill in ['c', 'c++', 'c#']:
+        if skill in ('c', 'c++', 'c#'):
             pattern = r'(?<!\w)' + re.escape(skill) + r'(?!\w)'
         else:
             pattern = r'\b' + re.escape(skill) + r'\b'
@@ -127,20 +158,18 @@ def extract_skills(text: str) -> list[str]:
 
 
 def extract_years(text: str) -> int:
-    """Return the maximum years-of-experience number found in text."""
+    """Trả về số năm kinh nghiệm lớn nhất tìm được trong text."""
     matches = re.findall(
         r'(\d+)\+?\s*(?:years?|yrs?)(?:\s+of\s+experience)?',
         text, re.IGNORECASE
     )
-    if not matches:
-        return 0
-    return max(int(y) for y in matches)
+    return max((int(y) for y in matches), default=0)
 
 
 def extract_education_level(text: str) -> int:
     """
-    Return a numeric education level (0–4) from text.
-    4 = PhD, 3 = Master, 2 = Bachelor, 1 = Diploma/Certificate, 0 = unknown
+    Trả về mức học vấn dạng số (0–4).
+    Nhất quán với EDUCATION_KEYWORDS trong generate_dataset.py.
     """
     text_lower = text.lower()
     best = 0
@@ -151,30 +180,61 @@ def extract_education_level(text: str) -> int:
 
 
 def extract_companies(text: str) -> list[str]:
+    """Dùng Spacy NER tìm tên công ty, lọc bỏ từ kỹ thuật hay bị nhận nhầm."""
+    if not nlp:
+        return []
+
     companies = []
-    if nlp:
-        doc = nlp(text[:100_000])
-        for ent in doc.ents:
-            if ent.label_ == "ORG" and len(ent.text) > 2:
-                companies.append(ent.text)
+    doc = nlp(text[:100_000])
+
+    for ent in doc.ents:
+        if ent.label_ != "ORG":
+            continue
+
+        ent_text  = re.sub(r'\s+', ' ', ent.text.strip())
+        lower_txt = ent_text.lower()
+
+        if len(ent_text) <= 2:
+            continue
+        if lower_txt in COMMON_TECH_SKILLS or lower_txt in INVALID_ORG_KEYWORDS:
+            continue
+        if any(x in lower_txt for x in ["role", "responsibilit", "skill", "education",
+                                         "backend", "frontend", "certificat", "summary"]):
+            continue
+
+        words = set(w.strip() for w in re.split(r'[\s\-,&/|]+', lower_txt) if w.strip())
+        if words and all(w in COMMON_TECH_SKILLS or w in INVALID_ORG_KEYWORDS for w in words):
+            continue
+
+        # Bỏ nếu xuất hiện quá sớm — thường là tên người
+        idx = text.lower().find(lower_txt)
+        if 0 <= idx < 150:
+            if not any(cw in lower_txt for cw in ["university", "college", "school",
+                                                    "inc", "ltd", "corp", "company"]):
+                continue
+
+        companies.append(ent_text)
+
     return list(set(companies))
 
 
+# ── Similarity & matching ──────────────────────────────────────────────────────
+
 def document_cosine_similarity(text_a: str, text_b: str) -> float:
     """
-    Compute semantic similarity between two full documents.
-    Falls back to TF-IDF-style Jaccard if embedder unavailable.
+    Tính semantic similarity giữa 2 văn bản.
+    Nhất quán với feature cosine_similarity trong generate_dataset.py.
     """
     if embedder:
         try:
-            emb_a = embedder.encode([text_a[:512]])   # truncate to keep it fast
+            emb_a = embedder.encode([text_a[:512]])
             emb_b = embedder.encode([text_b[:512]])
             sim = cosine_similarity(emb_a, emb_b)[0][0]
             return float(np.clip(sim, 0.0, 1.0))
         except Exception:
             pass
 
-    # Fallback: word-overlap Jaccard
+    # Fallback: Jaccard
     words_a = set(text_a.lower().split())
     words_b = set(text_b.lower().split())
     if not words_a or not words_b:
@@ -184,76 +244,85 @@ def document_cosine_similarity(text_a: str, text_b: str) -> float:
 
 def skill_match_with_embeddings(jd_skills: list, cv_skills: list) -> tuple[list, list]:
     """
-    Returns (matched_skills, missing_skills).
-    Uses sentence-transformer cosine similarity when available,
-    otherwise falls back to exact string matching.
+    So khớp skill JD vs CV.
+    Dùng cosine > 0.6 để bắt synonym (vd: "ml" ≈ "machine learning").
+    Trả về (matched_skills, missing_skills).
     """
-    matched, missing = [], []
+    if not jd_skills:
+        return [], []
 
-    if embedder and jd_skills and cv_skills:
-        jd_emb = embedder.encode(jd_skills)
-        cv_emb = embedder.encode(cv_skills)
+    if embedder and cv_skills:
+        jd_emb     = embedder.encode(jd_skills)
+        cv_emb     = embedder.encode(cv_skills)
         sim_matrix = cosine_similarity(jd_emb, cv_emb)
-
-        for i, jd_skill in enumerate(jd_skills):
-            if sim_matrix[i].max() > 0.6:
-                matched.append(jd_skill)
-            else:
-                missing.append(jd_skill)
+        matched = [jd_skills[i] for i in range(len(jd_skills)) if sim_matrix[i].max() > 0.6]
+        missing = [jd_skills[i] for i in range(len(jd_skills)) if sim_matrix[i].max() <= 0.6]
     else:
-        cv_set = set(cv_skills)
-        for js in jd_skills:
-            (matched if js in cv_set else missing).append(js)
+        cv_set  = set(cv_skills)
+        matched = [s for s in jd_skills if s in cv_set]
+        missing = [s for s in jd_skills if s not in cv_set]
 
     return matched, missing
 
 
+# ── AI scoring ─────────────────────────────────────────────────────────────────
+
 def predict_score(
     skill_match_ratio: float,
-    experience_diff: float,
-    cos_sim: float,
-    education_match: int,
+    experience_diff:   float,
+    cos_sim:           float,
+    education_match:   int,
 ) -> float:
     """
-    Use the trained RandomForest model to predict a 0–100 score.
-    Falls back to a weighted formula if the model isn't loaded.
-    """
-    if scoring_model is not None:
-        features = np.array([[skill_match_ratio, experience_diff, cos_sim, education_match]])
-        raw = scoring_model.predict(features)[0]
-        # Model was trained on 0–100 scale; normalise just in case
-        return float(np.clip(raw, 0, 100)) / 100.0
-    else:
-        # Weighted fallback (no model)
-        score = (
-            skill_match_ratio * 0.50 +
-            cos_sim            * 0.30 +
-            min(max(experience_diff + 3, 0) / 6, 1) * 0.10 +
-            (education_match / 4)  * 0.10
-        )
-        return float(np.clip(score, 0.0, 1.0))
+    Trả về score 0–100.
 
+    Model (Gradient Boosting) output đã là thang 0–100 → KHÔNG chia thêm.
+    Fallback dùng công thức giống compute_target_score() trong generate_dataset.py
+    để kết quả nhất quán khi model chưa được train.
+    """
+    # Feature vector phải đúng thứ tự FEATURE_ORDER
+    features = np.array([[skill_match_ratio, experience_diff, cos_sim, education_match]])
+
+    if scoring_model is not None:
+        raw = scoring_model.predict(features)[0]
+        return float(np.clip(raw, 0.0, 100.0))
+
+    # ── Weighted fallback ──
+    exp_norm = float(np.clip((experience_diff + 5) / 15, 0, 1))
+    score = (
+        skill_match_ratio * 50 +
+        cos_sim           * 25 +
+        exp_norm          * 15 +
+        education_match   * 10
+    )
+    if skill_match_ratio < 0.3:
+        score *= 0.75
+    if experience_diff < -2:
+        score -= abs(experience_diff + 2) * 2
+    if education_match == 0:
+        score -= 8
+    return float(np.clip(score, 0.0, 100.0))
+
+
+# ── Feedback ───────────────────────────────────────────────────────────────────
 
 def build_feedback(
-    missing_skills: list,
-    jd_skills: list,
-    cv_skills: list,
+    missing_skills:   list,
+    jd_skills:        list,
+    cv_skills:        list,
     years_experience: int,
-    education_level: int,
+    education_level:  int,
 ) -> list[str]:
     feedback = []
 
     if missing_skills:
-        feedback.append(
-            f"Bạn thiếu các kỹ năng: {', '.join(missing_skills)} → nên học thêm."
-        )
+        feedback.append(f"Thiếu kỹ năng: {', '.join(missing_skills)} → nên học thêm.")
 
-    ai_skills = {'machine learning', 'ai', 'deep learning', 'tensorflow', 'pytorch'}
-    if any(s in jd_skills for s in ai_skills) and not any(s in cv_skills for s in ai_skills):
-        feedback.append("CV chưa có project AI/ML → nên bổ sung dự án thực tế.")
+    if any(s in jd_skills for s in AI_SKILLS) and not any(s in cv_skills for s in AI_SKILLS):
+        feedback.append("JD yêu cầu AI/ML nhưng CV chưa có dự án liên quan → nên bổ sung.")
 
     if years_experience == 0:
-        feedback.append("CV chưa làm rõ số năm kinh nghiệm → nên ghi rõ.")
+        feedback.append("CV chưa ghi rõ số năm kinh nghiệm → nên bổ sung.")
 
     if education_level == 0:
         feedback.append("CV chưa đề cập trình độ học vấn → nên bổ sung.")
@@ -261,12 +330,23 @@ def build_feedback(
     return feedback
 
 
-# ── Route ──────────────────────────────────────────────────────────────────────
+# ── Routes ─────────────────────────────────────────────────────────────────────
+
+@app.route('/health', methods=['GET'])
+def health():
+    """Kiểm tra service và trạng thái các model."""
+    return jsonify({
+        "status":          "ok",
+        "model_loaded":    scoring_model is not None,
+        "embedder_loaded": embedder is not None,
+        "spacy_loaded":    nlp is not None,
+    })
+
 
 @app.route('/rank', methods=['POST'])
 def rank():
-    jd        = request.form.get('jd', '').strip()
-    files     = request.files.getlist('cvs')
+    jd    = request.form.get('jd', '').strip()
+    files = request.files.getlist('cvs')
 
     if not jd:
         return jsonify({"error": "Job description is required."}), 400
@@ -274,53 +354,49 @@ def rank():
         return jsonify({"error": "At least one CV file is required."}), 400
 
     # ── Extract JD info ──
-    jd_skills       = extract_skills(jd)
-    jd_years        = extract_years(jd)          # required years from JD
-    jd_edu_level    = extract_education_level(jd)
+    jd_skills    = extract_skills(jd)
+    jd_years     = extract_years(jd)
+    jd_edu_level = extract_education_level(jd)
 
     if not jd_skills:
-        jd_skills = [jd]   # use raw JD as single "skill" for similarity
+        jd_skills = [jd]   # dùng raw text nếu không tìm được skill cụ thể
 
     results = []
 
     for file in files:
         cv_text = extract_text(file)
+
         if not cv_text.strip():
             results.append({
                 "filename": file.filename,
-                "score": 0.0,
-                "error": "Could not extract text from file.",
+                "score":    0.0,
+                "error":    "Could not extract text from file.",
             })
             continue
 
         # ── Extract CV info ──
-        cv_skills       = extract_skills(cv_text)
-        cv_years        = extract_years(cv_text)
-        cv_edu_level    = extract_education_level(cv_text)
-        companies       = extract_companies(cv_text)
+        cv_skills    = extract_skills(cv_text)
+        cv_years     = extract_years(cv_text)
+        cv_edu_level = extract_education_level(cv_text)
+        companies    = extract_companies(cv_text)
 
         # ── Feature 1: skill_match_ratio ──
         matched_skills, missing_skills = skill_match_with_embeddings(jd_skills, cv_skills)
         skill_match_ratio = len(matched_skills) / len(jd_skills) if jd_skills else 0.0
 
         # ── Feature 2: experience_diff ──
-        # Positive = candidate has more years than required
-        experience_diff = float(cv_years - jd_years)
+        # Clip về đúng phạm vi train [-5, 10] (xem simulate_experience_diff trong generate_dataset.py)
+        experience_diff = float(np.clip(cv_years - jd_years, -5, 10))
 
-        # ── Feature 3: document cosine similarity ──
+        # ── Feature 3: cosine_similarity ──
         cos_sim = document_cosine_similarity(jd, cv_text)
 
         # ── Feature 4: education_match ──
-        # 1 if candidate meets or exceeds JD education requirement
+        # Nếu JD không đề cập học vấn (level=0) → mặc định match=1
         education_match = int(cv_edu_level >= jd_edu_level) if jd_edu_level > 0 else 1
 
-        # ── AI model prediction ──
-        final_score = predict_score(
-            skill_match_ratio,
-            experience_diff,
-            cos_sim,
-            education_match,
-        )
+        # ── Predict (0–100) ──
+        score = predict_score(skill_match_ratio, experience_diff, cos_sim, education_match)
 
         # ── Feedback ──
         feedback = build_feedback(
@@ -329,27 +405,26 @@ def rank():
         )
 
         results.append({
-            "filename":     file.filename,
-            "score":        round(final_score, 4),
-            "matched_skills":  matched_skills,
-            "missing_skills":  missing_skills,
-            "feedback":        feedback,
+            "filename":       file.filename,
+            "score":          round(score, 2),   # 0–100, ví dụ: 73.45
+            "matched_skills": matched_skills,
+            "missing_skills": missing_skills,
+            "feedback":       feedback,
             "extracted_info": {
                 "skills":           cv_skills,
                 "companies":        companies,
                 "years_experience": cv_years,
                 "education_level":  cv_edu_level,
             },
-            # expose features for transparency / debugging
-            "features": {
+            "features": {                         # debug / transparency
                 "skill_match_ratio": round(skill_match_ratio, 4),
-                "experience_diff":   experience_diff,
+                "experience_diff":   round(experience_diff, 2),
                 "cosine_similarity": round(cos_sim, 4),
                 "education_match":   education_match,
             },
         })
 
-    results.sort(key=lambda x: x.get('score', 0), reverse=True)
+    results.sort(key=lambda x: x.get("score", 0), reverse=True)
     return jsonify(results)
 
 
