@@ -1,0 +1,95 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String           @id @default(uuid()) @db.Uuid
+  email           String           @unique
+  password_hash   String
+  role            String
+  note            String?
+  properties      Json?
+  created_at      DateTime         @default(now())
+  updated_at      DateTime         @updatedAt
+  is_actived      Boolean          @default(true)
+  is_deleted      Boolean          @default(false)
+  created_by      String?          @db.Uuid
+  updated_by      String?          @db.Uuid
+  cvs             CV[]
+  jobDescriptions JobDescription[]
+}
+
+model JobDescription {
+  id                       String          @id @default(uuid()) @db.Uuid
+  user_id                  String          @db.Uuid
+  title                    String
+  description              String
+  required_skills          String[]
+  required_years           Int
+  required_education_level Int
+  note                     String?
+  properties               Json?
+  created_at               DateTime        @default(now())
+  updated_at               DateTime        @updatedAt
+  is_actived               Boolean         @default(true)
+  is_deleted               Boolean         @default(false)
+  created_by               String?         @db.Uuid
+  updated_by               String?         @db.Uuid
+  user                     User            @relation(fields: [user_id], references: [id])
+  RankingResult            RankingResult[]
+}
+
+model CV {
+  id               String          @id @default(uuid()) @db.Uuid
+  user_id          String          @db.Uuid
+  file_url         String
+  file_name        String
+  content          String
+  skills           String[]
+  companies        String[]
+  roles            String[]
+  education_level  Int
+  years_experience Int
+  note             String?
+  properties       Json?
+  created_at       DateTime        @default(now())
+  updated_at       DateTime        @updatedAt
+  is_actived       Boolean         @default(true)
+  is_deleted       Boolean         @default(false)
+  user             User            @relation(fields: [user_id], references: [id])
+  RankingResult    RankingResult[]
+
+  @@index([skills])
+}
+
+model RankingResult {
+  id             String         @id @db.Uuid
+  jd_id          String         @db.Uuid
+  cv_id          String         @db.Uuid
+  score          Float
+  matched_skills String[]
+  missed_skills  String[]
+  match_level    MatchLevel
+  note           String?
+  properties     Json?
+  created_at     DateTime       @default(now())
+  updated_at     DateTime
+  is_actived     Boolean        @default(true)
+  is_deleted     Boolean        @default(false)
+  CV             CV             @relation(fields: [cv_id], references: [id])
+  JobDescription JobDescription @relation(fields: [jd_id], references: [id])
+
+  @@index([cv_id])
+  @@index([jd_id])
+}
+
+enum MatchLevel {
+  HIGH
+  MEDIUM
+  LOW
+}
