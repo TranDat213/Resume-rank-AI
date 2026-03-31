@@ -8,9 +8,60 @@
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+
+<!-- ═══════════════════════════════════════════
+     AUTH MODAL
+════════════════════════════════════════════════ -->
+<div class="modal-backdrop" id="authModal" onclick="handleBackdropClick(event)">
+  <div class="modal-box">
+
+    <div class="modal-logo">CV<span>Rank</span></div>
+    <div class="modal-title" id="modalTitle">Sign in to continue</div>
+    <div class="modal-sub"   id="modalSub">You need an account to rank CVs</div>
+
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="tabLogin"    onclick="setAuthMode('login')">Login</button>
+      <button class="auth-tab"        id="tabRegister" onclick="setAuthMode('register')">Register</button>
+    </div>
+
+    <div class="auth-form" id="authForm">
+      <div class="field-group" id="nameGroup" style="display:none">
+        <label class="field-label">Full name</label>
+        <input class="field-input" id="authName" type="text" placeholder="Nguyen Van A" autocomplete="name" />
+      </div>
+
+      <div class="field-group">
+        <label class="field-label">Email</label>
+        <input class="field-input" id="authEmail" type="email" placeholder="you@example.com" autocomplete="email" />
+      </div>
+
+      <div class="field-group">
+        <label class="field-label">Password</label>
+        <div class="pw-wrap">
+          <input class="field-input" id="authPassword" type="password" placeholder="••••••••" autocomplete="current-password" />
+          <button class="pw-toggle" onclick="togglePw()" type="button" title="Show password">👁</button>
+        </div>
+      </div>
+
+      <div class="auth-error" id="authError" style="display:none"></div>
+
+      <button class="btn-auth" id="btnAuth" onclick="submitAuth()">
+        <span id="btnAuthLabel">Sign in</span>
+        <span class="btn-spinner hidden" id="authSpinner"></span>
+      </button>
+    </div>
+
+    <button class="modal-close" onclick="closeModal()" title="Close">×</button>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     MAIN APP
+════════════════════════════════════════════════ -->
 <div class="wrap">
 
-  <!-- ── Header ── -->
+  <!-- Header -->
   <header>
     <div class="logo">
       CV<span>Rank</span>
@@ -21,13 +72,24 @@
         <span class="status-dot"></span>
         <span id="statusText">CHECKING...</span>
       </div>
+
+      <!-- Logged in -->
+      <div class="user-chip hidden" id="userChip">
+        <div class="user-avatar" id="userAvatar">?</div>
+        <span class="user-email" id="userEmail"></span>
+        <button class="btn-logout" onclick="logout()" title="Log out">↩</button>
+      </div>
+
+      <!-- Logged out -->
+      <button class="btn-signin" id="btnSignIn" onclick="openModal('login')" style="display:none">
+        Sign in
+      </button>
     </div>
   </header>
 
-  <!-- ── Input grid ── -->
+  <!-- Input grid -->
   <div class="main-grid">
 
-    <!-- JD -->
     <div class="card">
       <div class="card-label">Job Description</div>
       <textarea id="jd"
@@ -35,7 +97,6 @@
       <div class="jd-meta" id="jdMeta"></div>
     </div>
 
-    <!-- CV upload -->
     <div class="card">
       <div class="card-label">Upload CVs <span class="badge" id="cvCount">0</span></div>
       <div class="drop-zone" id="dropZone">
@@ -51,7 +112,7 @@
 
   </div>
 
-  <!-- ── Actions ── -->
+  <!-- Actions -->
   <div class="submit-row">
     <button class="btn-rank" id="rankBtn" onclick="rankCVs()">⚡ Rank CVs</button>
     <button class="btn-clear" onclick="clearAll()">Clear all</button>
@@ -61,191 +122,32 @@
   <div class="loading-bar" id="loadingBar">
     <div class="loading-label" id="loadingLabel">Analysing CVs…</div>
   </div>
-
   <div id="errorBox"></div>
   <div id="results"></div>
 
 </div><!-- /.wrap -->
 
-<script>
-// ─────────────────────────────────────────────
-//  State
-// ─────────────────────────────────────────────
 
-// STATE
-let selectedFiles = [];
+<!-- ═══════════════════════════════════════════
+     JS MODULES
+     Thứ tự load quan trọng:
+       1. config   — constants (ENDPOINTS)
+       2. utils    — helpers dùng chung
+       3. auth     — JWT, modal
+       4. files    — file upload
+       5. jd       — JD textarea
+       6. suggestions — build suggestions
+       7. ranking  — call API, render results
+       8. app      — bootstrap (DOMContentLoaded)
+════════════════════════════════════════════════ -->
+<script src="js/config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/files.js"></script>
+<script src="js/jd.js"></script>
+<script src="js/suggestions.js"></script>
+<script src="js/ranking.js"></script>
+<script src="js/app.js"></script>
 
-const cvInput   = document.getElementById('cvInput');
-const dropZone  = document.getElementById('dropZone');
-const fileList  = document.getElementById('fileList');
-const rankBtn   = document.getElementById('rankBtn');
-const hintText  = document.getElementById('hintText');
-const loadingBar = document.getElementById('loadingBar');
-const jdEl      = document.getElementById('jd');
-
-// HEALTH CHECK
-async function checkHealth() {
-  const pill = document.getElementById('statusPill');
-  const txt  = document.getElementById('statusText');
-  try {
-    const r = await fetch('http://localhost:3000/health');
-    const d = await r.json();
-    txt.textContent = d.model_loaded ? 'AI MODEL READY' : 'NO MODEL';
-    pill.className  = d.model_loaded ? 'status-pill ready' : 'status-pill warn';
-  } catch {
-    txt.textContent = 'BACKEND OFFLINE';
-    pill.className  = 'status-pill offline';
-  }
-}
-checkHealth();
-
-// FILE EVENTS
-cvInput.addEventListener('change', () => {
-  addFiles(Array.from(cvInput.files));
-  cvInput.value = '';
-});
-
-dropZone.addEventListener('dragover', e => {
-  e.preventDefault();
-  dropZone.classList.add('drag-over');
-});
-dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
-dropZone.addEventListener('drop', e => {
-  e.preventDefault();
-  dropZone.classList.remove('drag-over');
-  addFiles(Array.from(e.dataTransfer.files));
-});
-
-// ADD FILES (FIX TRÙNG)
-function addFiles(newFiles) {
-  newFiles.forEach(f => {
-    const exists = selectedFiles.some(
-      x => x.name === f.name && x.size === f.size && x.lastModified === f.lastModified
-    );
-    if (!exists) selectedFiles.push(f);
-  });
-  renderFileList();
-  updateHint();
-}
-
-function removeFile(idx) {
-  selectedFiles.splice(idx, 1);
-  renderFileList();
-  updateHint();
-}
-
-function renderFileList() {
-  document.getElementById('cvCount').textContent = selectedFiles.length;
-  fileList.innerHTML = selectedFiles.map((f, i) => `
-    <div class="file-chip">
-      <span>${f.name}</span>
-      <span>${fmtSize(f.size)}</span>
-      <button onclick="removeFile(${i})">×</button>
-    </div>
-  `).join('');
-}
-
-// SUBMIT
-async function rankCVs() {
-  const jd = jdEl.value.trim();
-  if (!jd) return alert('Nhập JD');
-  if (!selectedFiles.length) return alert('Upload CV');
-
-  rankBtn.disabled = true;
-  loadingBar.classList.add('active');
-
-  const form = new FormData();
-  form.append('jd', jd);
-  selectedFiles.forEach(f => form.append('cvs', f, f.name));
-
-  try {
-    const res = await fetch('http://localhost:3000/ranking/upload', {
-      method: 'POST',
-      body: form
-    });
-    const data = await res.json();
-    renderResults(data);
-  } catch {
-    alert('Backend lỗi');
-  }
-
-  rankBtn.disabled = false;
-  loadingBar.classList.remove('active');
-}
-
-// RENDER
-function renderResults(data) {
-  document.getElementById('results').innerHTML = data.map((r, i) => `
-    <div class="result-card">
-      <h3>#${i+1} - ${r.filename}</h3>
-      <p>Score: ${r.score}</p>
-
-      <div class="suggestion-list">
-        ${buildSuggestions(r.feedback).map(buildSuggestionItem).join('')}
-      </div>
-
-      <div class="feedback-list">
-        ${r.feedback?.map(f => `<div class="feedback-item">${f}</div>`).join('') || ''}
-      </div>
-    </div>
-  `).join('');
-}
-
-// BUILD SUGGESTIONS TỪ BACKEND
-function buildSuggestions(feedback) {
-  const items = [];
-  if (!feedback) return items;
-
-  feedback.forEach(fb => {
-    items.push({
-      level: detectLevel(fb),
-      title: extractTitle(fb),
-      body: fb
-    });
-  });
-
-  return items;
-}
-
-// HELPER
-function detectLevel(text) {
-  if (text.includes('Thiếu')) return 'high';
-  if (text.includes('nên')) return 'mid';
-  return 'low';
-}
-
-function extractTitle(text) {
-  if (text.includes('kỹ năng')) return 'Thiếu kỹ năng';
-  if (text.includes('kinh nghiệm')) return 'Thiếu kinh nghiệm';
-  if (text.includes('học vấn')) return 'Thiếu học vấn';
-  return 'Cải thiện CV';
-}
-
-function buildSuggestionItem(s) {
-  return `
-    <div class="suggestion-item sug-${s.level}">
-      <div class="sug-icon">${s.level === 'high' ? '🔴' : s.level === 'mid' ? '🟡' : '🔵'}</div>
-      <div>
-        <div class="sug-title">${s.title}</div>
-        <div class="sug-text">${s.body}</div>
-      </div>
-    </div>
-  `;
-}
-
-function updateHint() {
-  if (!jdEl.value && !selectedFiles.length) hintText.textContent = 'Add JD + CV';
-  else if (!jdEl.value) hintText.textContent = 'Nhập JD';
-  else if (!selectedFiles.length) hintText.textContent = 'Upload CV';
-  else hintText.textContent = 'Ready';
-}
-
-function fmtSize(b) {
-  if (b < 1024) return b + 'B';
-  if (b < 1024*1024) return (b/1024).toFixed(1) + 'KB';
-  return (b/1024/1024).toFixed(1) + 'MB';
-}
-
-</script>
 </body>
 </html>
