@@ -5,6 +5,7 @@ import {
   UseInterceptors,
   Body,
   UseGuards,
+  Req,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { RankingService } from './ranking.service';
@@ -20,7 +21,9 @@ export class RankingController {
   async uploadCVs(
     @UploadedFiles() files: Express.Multer.File[],
     @Body('jd') jd: string,
+    @Req() req: any,
   ) {
-    return this.rankingService.rankFiles(files, jd);
+    const userId = req.user.userId;
+    return this.rankingService.rankFiles(files, jd, userId);
   }
-}
+}

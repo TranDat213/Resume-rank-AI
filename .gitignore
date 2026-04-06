@@ -8,6 +8,8 @@ ai-service/*.pkl
 ai-service/*.joblib
 ai-service/venv/
 ai-service/sample_dataset.csv
+ai-service/cv_scoring_model.pkl
+ai-service/model_evaluation.png
 # Env
 .env
 */.env

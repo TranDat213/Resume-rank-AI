@@ -55,7 +55,20 @@ async function doRank() {
     if (!res.ok) throw new Error(`Server responded ${res.status}: ${res.statusText}`);
 
     const data = await res.json();
-    renderResults(data);
+    
+    // Show JD info briefly on the UI if possible
+    if (data.jd_info) {
+      const { required_skills, required_years, required_education_level } = data.jd_info;
+      const eduStr = ['Unknown', 'Diploma/Cert', 'Bachelor', 'Master', 'PhD'][required_education_level] || '–';
+      document.getElementById('jdMeta').innerHTML = `
+        <strong>Meta:</strong> 
+        Skills: ${required_skills.length ? required_skills.join(', ') : 'None'} | 
+        Exp: ${required_years} yr(s) | 
+        Edu: ${eduStr}
+      `;
+    }
+
+    renderResults(data.results);
 
   } catch (err) {
     showError(`

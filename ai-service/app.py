@@ -415,6 +415,7 @@ def rank():
                 "companies":        companies,
                 "years_experience": cv_years,
                 "education_level":  cv_edu_level,
+                "text":             cv_text,
             },
             "features": {                         # debug / transparency
                 "skill_match_ratio": round(skill_match_ratio, 4),
@@ -425,7 +426,16 @@ def rank():
         })
 
     results.sort(key=lambda x: x.get("score", 0), reverse=True)
-    return jsonify(results)
+    
+    return jsonify({
+        "jd_info": {
+            "description": pd_jd if 'pd_jd' in locals() else jd,
+            "required_skills": jd_skills,
+            "required_years": jd_years,
+            "required_education_level": jd_edu_level
+        },
+        "results": results
+    })
 
 
 if __name__ == '__main__':
