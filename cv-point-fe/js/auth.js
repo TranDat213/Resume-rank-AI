@@ -115,7 +115,12 @@ async function submitAuth() {
     const token = data.access_token || data.token;
     const user  = data.user || { email };
 
-    if (!token) { showAuthError('No token received from server.'); return; }
+    if (!token && authMode === 'register') {
+  // Đăng ký thành công → chuyển sang login
+  setAuthMode('login');
+  showAuthError('Register success! Please login.');
+  return;
+}
 
     saveAuth(token, user);
     showLoggedIn(user);

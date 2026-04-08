@@ -39,7 +39,7 @@ export class RankingService {
       data: {
         user_id: userId,
         title: 'Uploaded Job Description',
-        description: jdInfo?.description || jd,
+        description: (jdInfo?.description || jd).replace(/\x00/g, ''),
         required_skills: jdInfo?.required_skills || [],
         required_years: jdInfo?.required_years || 0,
         required_education_level: jdInfo?.required_education_level || 0,
@@ -62,7 +62,7 @@ export class RankingService {
           user_id: userId,
           file_url: fileUrl,
           file_name: originalFile.originalname,
-          content: extractedInfo.text || '',
+          content: (extractedInfo.text || '').replace(/\x00/g, ''),
           skills: extractedInfo.skills || [],
           companies: extractedInfo.companies || [],
           roles: [], 

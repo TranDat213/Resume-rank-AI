@@ -1,6 +1,7 @@
 # Node (NestJS)
 cv-point-be/node_modules/
 cv-point-be/dist/
+cv-point-be/uploads/
 
 # Python AI
 ai-service/__pycache__/
